@@ -36,6 +36,9 @@ public class RequestsController : ControllerBase
     [HttpPost]
     public ActionResult<TourRequestResponseDto> Create([FromBody] CreateTourRequestDto dto)
     {
+        if (dto.DepartureDate.Date < DateTime.Today)
+            return BadRequest(new { message = "Ngày khởi hành không được ở trong quá khứ" });
+
         if (dto.Services == null || dto.Services.Count == 0)
             return BadRequest(new { message = "Phải có ít nhất 1 dịch vụ" });
 

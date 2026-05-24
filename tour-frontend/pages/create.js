@@ -35,8 +35,17 @@ const EMPTY_FORM = {
   guestCount: "",
 };
 
+function getTodayInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function CreatePage() {
   const router = useRouter();
+  const minDepartureDate = getTodayInputValue();
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [services, setServices] = useState([{ ...EMPTY_SERVICE }]);
@@ -85,9 +94,14 @@ export default function CreatePage() {
 
   function validate() {
     const errs = {};
+    const selectedDepartureDate = form.departureDate?.trim();
 
     if (!form.tourName.trim()) errs.tourName = "Tên tour là bắt buộc";
-    if (!form.departureDate) errs.departureDate = "Ngày khởi hành là bắt buộc";
+    if (!selectedDepartureDate) {
+      errs.departureDate = "Ngày khởi hành là bắt buộc";
+    } else if (selectedDepartureDate < minDepartureDate) {
+      errs.departureDate = "Không thể chọn ngày trong quá khứ";
+    }
     if (!form.tourType) errs.tourType = "Loại tour là bắt buộc";
     if (!form.guestCount || parseInt(form.guestCount) <= 0)
       errs.guestCount = "Số lượng khách phải > 0";
@@ -182,6 +196,7 @@ export default function CreatePage() {
                 <label className="label">Ngày khởi hành <span className="text-red-500">*</span></label>
                 <input
                   type="date"
+                  min={minDepartureDate}
                   className={`input-field ${errors.departureDate ? "border-red-400" : ""}`}
                   value={form.departureDate}
                   onChange={(e) => handleFormChange("departureDate", e.target.value)}
