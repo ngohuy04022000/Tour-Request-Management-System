@@ -1,0 +1,16 @@
+services:
+  backend:
+    build:
+      context: ./backend/RequestSystem.Api
+    ports:
+      - "8081:8080"
+
+  frontend:
+    build:
+      context: ./tour-frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8081
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
