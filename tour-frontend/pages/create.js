@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
-import { formatVND } from "../components/utils";
+import { formatVND, readErrorMessage } from "../components/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -17,6 +17,8 @@ const SERVICE_TYPES = [
   "Hướng dẫn viên",
   "Khác",
 ];
+
+const MANAGER_APPROVAL_THRESHOLD = 100_000_000;
 
 const EMPTY_SERVICE = {
   serviceType: "",
@@ -43,12 +45,23 @@ function getTodayInputValue() {
   return `${year}-${month}-${day}`;
 }
 
+function isPositiveInteger(value) {
+  return /^\d+$/.test(String(value).trim()) && parseInt(value, 10) > 0;
+}
+
 export default function CreatePage() {
   const router = useRouter();
-  const minDepartureDate = getTodayInputValue();
+  // Tính ngày tối thiểu phía client để tránh lệch múi giờ giữa server và trình duyệt
+  const [minDepartureDate, setMinDepartureDate] = useState("");
+  useEffect(() => {
+    setMinDepartureDate(getTodayInputValue());
+  }, []);
+
+  const nextServiceId = useRef(1);
+  const newService = () => ({ ...EMPTY_SERVICE, id: nextServiceId.current++ });
 
   const [form, setForm] = useState(EMPTY_FORM);
-  const [services, setServices] = useState([{ ...EMPTY_SERVICE }]);
+  const [services, setServices] = useState(() => [{ ...EMPTY_SERVICE, id: 0 }]);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState(null);
@@ -56,17 +69,19 @@ export default function CreatePage() {
   const serviceRows = services.map((s) => ({
     ...s,
     rowTotal:
-      parseFloat(s.quantity) > 0 && parseFloat(s.unitPrice) > 0
-        ? parseFloat(s.quantity) * parseFloat(s.unitPrice)
+      isPositiveInteger(s.quantity) && parseFloat(s.unitPrice) > 0
+        ? parseInt(s.quantity, 10) * parseFloat(s.unitPrice)
         : 0,
   }));
 
   const totalCost = serviceRows.reduce((sum, s) => sum + s.rowTotal, 0);
   const predictedStatus =
-    totalCost > 100_000_000 ? "Chờ duyệt quản lý" : "Đã tiếp nhận";
+    totalCost > MANAGER_APPROVAL_THRESHOLD ? "Chờ duyệt quản lý" : "Đã tiếp nhận";
 
   const showMiceWarning =
-    form.tourType === "MICE" && parseInt(form.guestCount) < 10 && form.guestCount !== "";
+    form.tourType === "MICE" &&
+    form.guestCount !== "" &&
+    parseInt(form.guestCount, 10) < 10;
 
   function handleFormChange(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -84,27 +99,32 @@ export default function CreatePage() {
   }
 
   function addService() {
-    setServices((prev) => [...prev, { ...EMPTY_SERVICE }]);
+    setServices((prev) => [...prev, newService()]);
   }
 
   function removeService(index) {
     if (services.length === 1) return;
     setServices((prev) => prev.filter((_, i) => i !== index));
+    // Lỗi của dịch vụ được lưu theo index nên cần xoá để không bị lệch sang dòng khác
+    setErrors((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([k]) => !k.startsWith("service_")))
+    );
   }
 
   function validate() {
     const errs = {};
     const selectedDepartureDate = form.departureDate?.trim();
+    const today = getTodayInputValue();
 
     if (!form.tourName.trim()) errs.tourName = "Tên tour là bắt buộc";
     if (!selectedDepartureDate) {
       errs.departureDate = "Ngày khởi hành là bắt buộc";
-    } else if (selectedDepartureDate < minDepartureDate) {
+    } else if (selectedDepartureDate < today) {
       errs.departureDate = "Không thể chọn ngày trong quá khứ";
     }
     if (!form.tourType) errs.tourType = "Loại tour là bắt buộc";
-    if (!form.guestCount || parseInt(form.guestCount) <= 0)
-      errs.guestCount = "Số lượng khách phải > 0";
+    if (!isPositiveInteger(form.guestCount))
+      errs.guestCount = "Số lượng khách phải là số nguyên > 0";
 
     if (services.length === 0) errs.services = "Phải có ít nhất 1 dịch vụ";
 
@@ -112,8 +132,8 @@ export default function CreatePage() {
       if (!s.serviceType) errs[`service_${i}_serviceType`] = "Bắt buộc";
       if (!s.serviceName.trim()) errs[`service_${i}_serviceName`] = "Bắt buộc";
       if (!s.supplier.trim()) errs[`service_${i}_supplier`] = "Bắt buộc";
-      if (!s.quantity || parseFloat(s.quantity) <= 0)
-        errs[`service_${i}_quantity`] = "Phải > 0";
+      if (!isPositiveInteger(s.quantity))
+        errs[`service_${i}_quantity`] = "Phải là số nguyên > 0";
       if (!s.unitPrice || parseFloat(s.unitPrice) <= 0)
         errs[`service_${i}_unitPrice`] = "Phải > 0";
     });
@@ -140,12 +160,12 @@ export default function CreatePage() {
       departureDate: form.departureDate,
       personInCharge: form.personInCharge.trim(),
       tourType: form.tourType,
-      guestCount: parseInt(form.guestCount),
+      guestCount: parseInt(form.guestCount, 10),
       services: services.map((s) => ({
         serviceType: s.serviceType,
         serviceName: s.serviceName.trim(),
         supplier: s.supplier.trim(),
-        quantity: parseInt(s.quantity),
+        quantity: parseInt(s.quantity, 10),
         unitPrice: parseFloat(s.unitPrice),
         notes: s.notes.trim() || null,
       })),
@@ -160,13 +180,16 @@ export default function CreatePage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Có lỗi khi tạo phiếu");
+        throw new Error(await readErrorMessage(res, "Có lỗi khi tạo phiếu"));
       }
 
       router.push("/");
     } catch (err) {
-      setServerError(err.message);
+      setServerError(
+        err instanceof TypeError
+          ? "Không thể kết nối tới máy chủ. Vui lòng thử lại."
+          : err.message
+      );
     } finally {
       setSubmitting(false);
     }
@@ -196,7 +219,7 @@ export default function CreatePage() {
                 <label className="label">Ngày khởi hành <span className="text-red-500">*</span></label>
                 <input
                   type="date"
-                  min={minDepartureDate}
+                  min={minDepartureDate || undefined}
                   className={`input-field ${errors.departureDate ? "border-red-400" : ""}`}
                   value={form.departureDate}
                   onChange={(e) => handleFormChange("departureDate", e.target.value)}
@@ -251,6 +274,7 @@ export default function CreatePage() {
                 <input
                   type="number"
                   min="1"
+                  step="1"
                   className={`input-field ${errors.guestCount ? "border-red-400" : ""}`}
                   placeholder="0"
                   value={form.guestCount}
@@ -273,7 +297,7 @@ export default function CreatePage() {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-800">
-                Danh sách dịch vụ
+                Danh sách dịch vụ{" "}
                 <span className="text-sm font-normal text-gray-400">
                   ({services.length} dịch vụ)
                 </span>
@@ -295,7 +319,7 @@ export default function CreatePage() {
 
                 return (
                   <div
-                    key={idx}
+                    key={svc.id}
                     className="rounded-md border border-gray-200 p-4 relative bg-gray-50"
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -390,6 +414,7 @@ export default function CreatePage() {
                         <input
                           type="number"
                           min="1"
+                          step="1"
                           className={`input-field text-sm ${
                             errors[`service_${idx}_quantity`] ? "border-red-400" : ""
                           }`}
@@ -457,7 +482,7 @@ export default function CreatePage() {
                   >
                     {predictedStatus}
                   </span>
-                  {totalCost > 100_000_000 && (
+                  {totalCost > MANAGER_APPROVAL_THRESHOLD && (
                     <p className="text-xs text-gray-500 mt-1">Vượt ngưỡng 100,000,000 ₫</p>
                   )}
                 </div>

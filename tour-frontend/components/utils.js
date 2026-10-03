@@ -15,8 +15,23 @@ export function formatVND(amount) {
  */
 export function formatDate(dateStr) {
   if (!dateStr) return "—";
+  // Lấy phần yyyy-MM-dd để tránh lệch ngày do múi giờ
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   const d = new Date(dateStr);
-  return d.toLocaleDateString("vi-VN");
+  return isNaN(d) ? "—" : d.toLocaleDateString("vi-VN");
+}
+
+/**
+ * Đọc thông báo lỗi từ response của API (có thể không phải JSON)
+ */
+export async function readErrorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    return data?.message || data?.title || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 /**

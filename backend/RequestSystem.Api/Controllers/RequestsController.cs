@@ -36,30 +36,42 @@ public class RequestsController : ControllerBase
     [HttpPost]
     public ActionResult<TourRequestResponseDto> Create([FromBody] CreateTourRequestDto dto)
     {
-        if (dto.DepartureDate.Date < DateTime.Today)
+        if (string.IsNullOrWhiteSpace(dto.TourName))
+            return BadRequest(new { message = "Tên tour là bắt buộc" });
+
+        if (dto.DepartureDate is null)
+            return BadRequest(new { message = "Ngày khởi hành là bắt buộc" });
+
+        if (dto.DepartureDate.Value.Date < DateTime.Today)
             return BadRequest(new { message = "Ngày khởi hành không được ở trong quá khứ" });
+
+        if (dto.GuestCount is null or <= 0)
+            return BadRequest(new { message = "Số lượng khách phải > 0" });
 
         if (dto.Services == null || dto.Services.Count == 0)
             return BadRequest(new { message = "Phải có ít nhất 1 dịch vụ" });
 
         foreach (var svc in dto.Services)
         {
+            if (svc is null)
+                return BadRequest(new { message = "Dữ liệu dịch vụ không hợp lệ" });
             if (svc.Quantity <= 0)
                 return BadRequest(new { message = $"Số lượng dịch vụ '{svc.ServiceName}' phải > 0" });
             if (svc.UnitPrice <= 0)
                 return BadRequest(new { message = $"Đơn giá dịch vụ '{svc.ServiceName}' phải > 0" });
         }
 
-        if (!Enum.TryParse<TourType>(dto.TourType, ignoreCase: true, out var tourType))
+        if (!Enum.TryParse<TourType>(dto.TourType, ignoreCase: true, out var tourType)
+            || !Enum.IsDefined(tourType))
             return BadRequest(new { message = "Loại tour không hợp lệ. Chấp nhận: FIT, GIT, MICE" });
 
         var request = new TourRequest
         {
             TourName = dto.TourName.Trim(),
-            DepartureDate = dto.DepartureDate.Date,
+            DepartureDate = dto.DepartureDate.Value.Date,
             PersonInCharge = dto.PersonInCharge?.Trim() ?? string.Empty,
             TourType = tourType,
-            GuestCount = dto.GuestCount,
+            GuestCount = dto.GuestCount.Value,
             Services = dto.Services.Select(s => new ServiceItem
             {
                 ServiceType = s.ServiceType.Trim(),
@@ -67,7 +79,7 @@ public class RequestsController : ControllerBase
                 Supplier = s.Supplier.Trim(),
                 Quantity = s.Quantity,
                 UnitPrice = s.UnitPrice,
-                Notes = s.Notes?.Trim()
+                Notes = string.IsNullOrWhiteSpace(s.Notes) ? null : s.Notes.Trim()
             }).ToList()
         };
 

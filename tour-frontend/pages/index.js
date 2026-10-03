@@ -1,8 +1,13 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Layout from "../components/Layout";
-import { statusBadge, tourTypeBadge } from "../components/utils";
-import { formatVND, formatDate } from "../components/formatters";
+import {
+  statusBadge,
+  tourTypeBadge,
+  formatVND,
+  formatDate,
+  readErrorMessage,
+} from "../components/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -13,6 +18,8 @@ export default function RequestListPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
+  const latestDetailId = useRef(null);
 
   // Fetch all requests
   useEffect(() => {
@@ -22,12 +29,17 @@ export default function RequestListPage() {
   async function fetchRequests() {
     try {
       setLoading(true);
+      setError(null);
       const res = await fetch(`${API_URL}/api/requests`);
       if (!res.ok) throw new Error("Không thể tải danh sách phiếu");
       const data = await res.json();
-      setRequests(data);
+      setRequests(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err.message);
+      setError(
+        err instanceof TypeError
+          ? "Không thể kết nối tới máy chủ. Vui lòng kiểm tra backend."
+          : err.message
+      );
     } finally {
       setLoading(false);
     }
@@ -36,20 +48,31 @@ export default function RequestListPage() {
   // Fetch detail on row click
   async function fetchDetail(id) {
     if (selectedId === id) {
+      latestDetailId.current = null;
       setSelectedId(null);
       setDetail(null);
+      setDetailError(null);
       return;
     }
+    latestDetailId.current = id;
     setSelectedId(id);
+    setDetail(null);
+    setDetailError(null);
     setDetailLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/requests/${id}`);
+      if (!res.ok) throw new Error(await readErrorMessage(res, "Không thể tải chi tiết phiếu"));
       const data = await res.json();
-      setDetail(data);
-    } catch {
-      setDetail(null);
+      // Bỏ qua response cũ nếu người dùng đã chọn phiếu khác
+      if (latestDetailId.current === id) setDetail(data);
+    } catch (err) {
+      if (latestDetailId.current === id) {
+        setDetailError(
+          err instanceof TypeError ? "Không thể kết nối tới máy chủ" : err.message
+        );
+      }
     } finally {
-      setDetailLoading(false);
+      if (latestDetailId.current === id) setDetailLoading(false);
     }
   }
 
@@ -60,7 +83,7 @@ export default function RequestListPage() {
           Tổng cộng <span className="font-semibold text-gray-800">{requests.length}</span> phiếu
         </p>
         <div className="flex gap-2">
-          <button onClick={fetchRequests} className="btn-secondary">
+          <button onClick={fetchRequests} className="btn-secondary" disabled={loading}>
             Làm mới
           </button>
           <Link href="/create" className="btn-primary">
@@ -86,7 +109,7 @@ export default function RequestListPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="card p-0 overflow-hidden">
+          <div className="card p-0 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -107,9 +130,8 @@ export default function RequestListPage() {
                   const isSelected = selectedId === r.id;
 
                   return (
-                    <>
+                    <Fragment key={r.id}>
                       <tr
-                          key={r.id}
                         className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors ${
                           isSelected ? "bg-blue-50" : idx % 2 === 0 ? "" : "bg-gray-50/50"
                         }`}
@@ -146,10 +168,12 @@ export default function RequestListPage() {
                       </tr>
 
                       {isSelected && (
-                        <tr key={`${r.id}-detail`}>
+                        <tr>
                           <td colSpan={8} className="px-4 pb-4 pt-0 bg-blue-50">
                             {detailLoading ? (
                               <p className="text-center text-gray-500 py-4">Đang tải chi tiết...</p>
+                            ) : detailError ? (
+                              <p className="text-center text-red-600 py-4">{detailError}</p>
                             ) : detail ? (
                               <div className="mt-3">
                                 {detail.showMiceWarning && (
@@ -201,7 +225,7 @@ export default function RequestListPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

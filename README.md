@@ -23,13 +23,15 @@ Mini system quản lý Phiếu đề nghị đặt dịch vụ tour cho bài ứ
 │       │   ├── TourRequest.cs
 │       │   ├── ServiceItem.cs
 │       │   └── TourType.cs
+│       ├── Properties/
+│       │   └── launchSettings.json  (chạy local ở cổng 5000, môi trường Development)
 │       ├── Program.cs
 │       └── RequestSystem.Api.csproj
 │
 └── tour-frontend/           # Frontend - Next.js 14 + Tailwind CSS
     ├── components/
     │   ├── Layout.js
-    │   └── utils.js
+    │   └── utils.js         (format tiền/ngày, badge, đọc lỗi API)
     ├── pages/
     │   ├── _app.js
     │   ├── index.js         (Danh sách phiếu)
@@ -163,5 +165,7 @@ Lần chạy đầu có thể mất vài phút để tải image và cài depend
 - **Backend:** ASP.NET Core 8, C# 12, Swagger/OpenAPI
 - **Frontend:** Next.js 14 (Pages Router), React 18, Tailwind CSS 3
 - **Storage:** In-memory (Singleton) để có thể migrate sang EF Core + SQL Server
+
+CORS mặc định cho phép `http://localhost:3000` và `http://localhost:3001`; có thể thay đổi qua cấu hình `Cors:AllowedOrigins` (ví dụ biến môi trường `Cors__AllowedOrigins__0`).
 
 API URL cho frontend đã được cấu hình trong Docker Compose để trỏ tới backend trên cổng 8081.

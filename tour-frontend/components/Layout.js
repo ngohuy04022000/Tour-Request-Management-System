@@ -1,3 +1,4 @@
+import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 
@@ -11,6 +12,9 @@ export default function Layout({ children, title = "Quản lý phiếu đề ngh
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Head>
+        <title>{title ? `${title} | Vietravel` : "Vietravel"}</title>
+      </Head>
       <header className="border-b border-blue-900/20 bg-blue-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-4">
